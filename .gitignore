@@ -38,6 +38,8 @@ pnpm-debug.log*
 /prisma/dev.db-journal
 /prisma/*.db
 /prisma/*.db-journal
+**/*.db
+**/*.db-journal
 
 # typescript
 *.tsbuildinfo
