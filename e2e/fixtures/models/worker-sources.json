@@ -1,0 +1,10 @@
+{
+  "notes": "Gathered five public sources on the tea trade. tea",
+  "citations": [
+    { "snapshotId": "PATCH", "url": "https://example.com/tea/1", "quote": "tea", "sourceClass": "web" },
+    { "snapshotId": "PATCH", "url": "https://example.com/tea/2", "quote": "tea", "sourceClass": "web" },
+    { "snapshotId": "PATCH", "url": "https://example.com/tea/3", "quote": "tea", "sourceClass": "web" },
+    { "snapshotId": "PATCH", "url": "https://example.com/tea/4", "quote": "tea", "sourceClass": "web" },
+    { "snapshotId": "PATCH", "url": "https://example.com/tea/5", "quote": "tea", "sourceClass": "web" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "questions": ["What period is in scope?"],
+  "inclusions": ["public tea trade history last 20 years"],
+  "exclusions": ["medical advice", "trade recommendations"],
+  "acceptance": ["named sources", "uncertainty called out"]
+}

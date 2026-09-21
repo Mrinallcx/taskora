@@ -1,0 +1,7 @@
+{
+  "symbol": "AAPL",
+  "price": 189.5,
+  "currency": "USD",
+  "asOf": "2024-09-30",
+  "sourceUrl": "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL"
+}

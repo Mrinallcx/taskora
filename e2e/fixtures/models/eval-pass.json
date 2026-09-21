@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "brief_coverage": 90,
+    "citation_quality": 88,
+    "accuracy_tells": 86,
+    "structure": 84,
+    "uncertainty": 80
+  },
+  "pass": true,
+  "hardFails": [],
+  "comments": "Solid cited memo."
+}

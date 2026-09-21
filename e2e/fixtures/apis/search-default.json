@@ -1,0 +1,9 @@
+{
+  "hits": [
+    { "title": "Source 1", "url": "https://example.com/tea/1", "snippet": "tea" },
+    { "title": "Source 2", "url": "https://example.com/tea/2", "snippet": "tea" },
+    { "title": "Source 3", "url": "https://example.com/tea/3", "snippet": "tea" },
+    { "title": "Source 4", "url": "https://example.com/tea/4", "snippet": "tea" },
+    { "title": "Source 5", "url": "https://example.com/tea/5", "snippet": "tea" }
+  ]
+}

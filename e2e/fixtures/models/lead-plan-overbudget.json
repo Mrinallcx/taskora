@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    { "type": "scope", "acceptance": "scope locked" },
+    { "type": "sources", "acceptance": "five sources" },
+    { "type": "findings", "acceptance": "findings drafted" },
+    { "type": "report", "acceptance": "cited memo" }
+  ],
+  "proposedListingSlugs": ["worker-research", "eval-research"],
+  "estimatedCostCents": 999999,
+  "questions": []
+}

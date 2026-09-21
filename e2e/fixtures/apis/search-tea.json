@@ -1,0 +1,9 @@
+{
+  "hits": [
+    { "title": "Tea trade 1", "url": "https://example.com/tea/1", "snippet": "tea exports" },
+    { "title": "Tea trade 2", "url": "https://example.com/tea/2", "snippet": "tea auctions" },
+    { "title": "Tea trade 3", "url": "https://example.com/tea/3", "snippet": "tea prices" },
+    { "title": "Tea trade 4", "url": "https://example.com/tea/4", "snippet": "tea farms" },
+    { "title": "Tea trade 5", "url": "https://example.com/tea/5", "snippet": "tea history" }
+  ]
+}

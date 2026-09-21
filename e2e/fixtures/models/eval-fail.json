@@ -1,0 +1,12 @@
+{
+  "scores": {
+    "brief_coverage": 40,
+    "citation_quality": 42,
+    "accuracy_tells": 38,
+    "structure": 40,
+    "uncertainty": 35
+  },
+  "pass": false,
+  "hardFails": [],
+  "comments": "Needs a tighter brief match."
+}
