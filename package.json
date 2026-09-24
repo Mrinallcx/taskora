@@ -11,6 +11,7 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
+    "db:push": "tsx scripts/push-db.ts",
     "worker": "WORKER_IN_PROCESS=1 tsx src/worker/index.ts",
     "test": "vitest run",
     "test:e2e": "vitest run e2e/api e2e/agent",

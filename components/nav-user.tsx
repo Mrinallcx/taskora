@@ -36,6 +36,7 @@ function maskEmail(email: string) {
 export function NavUser() {
   const { isMobile } = useSidebar()
   const { isLoaded, isSignedIn, user } = useUser()
+  const authOff = process.env.NEXT_PUBLIC_DISABLE_AUTH === "1"
   const { signOut } = useClerk()
   const [showEmail, setShowEmail] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -63,6 +64,11 @@ export function NavUser() {
             <span className="group-data-[collapsible=icon]:hidden">
               Account
             </span>
+          </SidebarMenuButton>
+        ) : authOff ? (
+          <SidebarMenuButton size="lg" tooltip="Guest">
+            <UserAvatar name="Guest" className="size-8" />
+            <span className="group-data-[collapsible=icon]:hidden">Guest</span>
           </SidebarMenuButton>
         ) : isSignedIn ? (
           <DropdownMenu>

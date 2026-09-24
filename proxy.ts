@@ -1,6 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
+import { authDisabled } from "@/src/lib/auth-flag"
+
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
@@ -12,6 +14,7 @@ const isInternal = createRouteMatcher([
 ])
 
 export default clerkMiddleware(async (auth, req) => {
+  if (authDisabled()) return NextResponse.next()
   const testAuth =
     process.env.NODE_ENV !== "production" &&
     process.env.ALLOW_TEST_AUTH === "1" &&

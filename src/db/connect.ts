@@ -17,7 +17,18 @@ export async function connect() {
     g._mongoose = undefined
     g._mongooseUri = uri
   }
-  g._mongoose ??= mongoose.connect(uri)
+  g._mongoose ??= mongoose
+    .connect(uri, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 8000,
+    })
+    .then(async (connection) => {
+    if (!process.env.VITEST) {
+      const { ensurePlatformListings } = await import("@/src/domain/platform-seed")
+      await ensurePlatformListings()
+    }
+    return connection
+  })
   return g._mongoose
 }
 

@@ -1,65 +1,21 @@
-import { connect } from "../src/db/connect"
-import { Listing } from "../src/db/models"
+import { connect, disconnect } from "../src/db/connect"
+import { ensurePlatformListings } from "../src/domain/platform-seed"
 import { loadLocalEnv } from "../src/lib/load-env"
-
-const SEED = [
-  {
-    slug: "lead-research",
-    kind: "lead",
-    ownerUserId: "platform",
-    vertical: "research",
-    priceCents: 3500,
-    runtime: "hosted_prompt",
-    status: "live",
-    name: "Research lead",
-    summary: "Proposes a research plan and hire list.",
-    skills: "planning, hiring, research",
-    isPublic: true,
-    tools: [],
-  },
-  {
-    slug: "worker-research",
-    kind: "worker",
-    ownerUserId: "platform",
-    vertical: "research",
-    priceCents: 4500,
-    runtime: "hosted_prompt",
-    status: "live",
-    name: "Research worker",
-    summary: "Scopes, sources, writes the cited memo.",
-    skills: "web search, citations, sourced memos",
-    isPublic: true,
-    tools: ["web_search", "fetch_page"],
-  },
-  {
-    slug: "eval-research",
-    kind: "evaluator",
-    ownerUserId: "platform",
-    vertical: "research",
-    priceCents: 1200,
-    runtime: "hosted_prompt",
-    status: "live",
-    name: "Research evaluator",
-    summary: "Scores the final report independently.",
-    skills: "citations, brief coverage, structure",
-    isPublic: true,
-    tools: [],
-  },
-] as const
 
 export async function seedListings() {
   await connect()
-  for (const row of SEED) {
-    await Listing.findOneAndUpdate({ slug: row.slug }, { $set: row }, { upsert: true })
-  }
+  await ensurePlatformListings()
 }
 
 const isMain = process.argv[1]?.includes("seed")
 if (isMain) {
   loadLocalEnv()
   seedListings()
-    .then(() => {
-      console.log("Seeded lead-research, worker-research, eval-research")
+    .then(async () => {
+      console.log(
+        "Seeded lead-research, worker-research, eval-research, research-handoff"
+      )
+      await disconnect()
       process.exit(0)
     })
     .catch((error) => {

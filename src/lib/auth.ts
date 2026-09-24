@@ -4,6 +4,11 @@ import { currentUser } from "@clerk/nextjs/server"
 import { connect } from "@/src/db/connect"
 import { User } from "@/src/db/models"
 import { ApiError } from "@/src/domain/errors"
+import { authDisabled } from "@/src/lib/auth-flag"
+
+export { authDisabled }
+
+const GUEST_CLERK_ID = "guest-open"
 
 function testClerkUserId(request?: Request) {
   if (process.env.NODE_ENV === "production") return null
@@ -15,6 +20,21 @@ function testClerkUserId(request?: Request) {
 
 export async function getSessionUser(request?: Request) {
   await connect()
+  if (authDisabled()) {
+    const user = await User.findOneAndUpdate(
+      { clerkUserId: GUEST_CLERK_ID },
+      {
+        $set: { displayName: "Guest" },
+        $setOnInsert: {
+          availableCents: 100000,
+          escrowedCents: 0,
+        },
+      },
+      { upsert: true, returnDocument: "after" }
+    )
+    if (!user) throw new ApiError("unauthorized", "Sign in required", 401)
+    return user
+  }
   const testId = testClerkUserId(request)
   let clerkUserId = testId
   let email = ""
