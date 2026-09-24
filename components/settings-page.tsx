@@ -6,11 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
   LogOutIcon,
-  MonitorIcon,
-  MoonIcon,
   PlugIcon,
   SettingsIcon,
-  SunIcon,
   UserRoundIcon,
   WalletIcon,
 } from "lucide-react"
@@ -31,7 +28,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { useBlurPersonalInfo } from "@/hooks/use-blur-personal-info"
 import { cn } from "@/lib/utils"
-import { useTheme } from "next-themes"
 
 type SettingsTab = "account" | "wallet" | "connectors" | "preferences"
 
@@ -62,7 +58,7 @@ const TABS: {
   {
     value: "preferences",
     label: "Preferences",
-    description: "Theme and how your name is shown",
+    description: "How your name is shown",
     icon: SettingsIcon,
   },
 ]
@@ -87,12 +83,10 @@ function dollars(cents: number) {
 function SettingsContent() {
   const { user, isLoaded } = useUser()
   const { signOut, openUserProfile } = useClerk()
-  const { theme, setTheme } = useTheme()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [blurPersonalInfo, setBlurPersonalInfo] = useBlurPersonalInfo()
-  const [mounted, setMounted] = useState(false)
   const [wallet, setWallet] = useState<{
     availableCents: number
     escrowedCents: number
@@ -115,10 +109,6 @@ function SettingsContent() {
   const current = tabMeta(activeTab)
   const name = user?.fullName ?? user?.username ?? "User"
   const email = user?.primaryEmailAddress?.emailAddress ?? ""
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     void fetch("/api/me")
@@ -167,8 +157,6 @@ function SettingsContent() {
     })
     toast.success("Added $1,000.00")
   }
-
-  const themeValue = mounted ? (theme ?? "system") : "system"
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-6">
@@ -438,35 +426,6 @@ function SettingsContent() {
 
           {activeTab === "preferences" ? (
             <div className="divide-border/40 divide-y rounded-lg border border-border/60 px-4">
-              <div className="flex items-center justify-between gap-6 py-3.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Theme</p>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    Light, dark, or match the system
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {(
-                    [
-                      ["light", SunIcon, "Light"],
-                      ["dark", MoonIcon, "Dark"],
-                      ["system", MonitorIcon, "System"],
-                    ] as const
-                  ).map(([value, Icon, label]) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="sm"
-                      variant={themeValue === value ? "default" : "outline"}
-                      className="gap-1.5"
-                      onClick={() => setTheme(value)}
-                    >
-                      <Icon />
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
               <div className="flex items-center justify-between gap-6 py-3.5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Blur personal info</p>
