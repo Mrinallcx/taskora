@@ -1,0 +1,21 @@
+export type StockListing = {
+  symbol: string
+  name: string
+  exchange: string
+}
+
+export type LaunchCategory = "stocks"
+
+export const MAX_LAUNCH_STOCKS = 4
+
+export const LAUNCH_CATEGORIES: { id: LaunchCategory; label: string }[] = [
+  { id: "stocks", label: "Stocks" },
+]
+
+export function isLaunchCategory(value: unknown): value is LaunchCategory {
+  return value === "stocks"
+}
+
+export function isNasdaqExchange(exchange: string) {
+  return /^NASDAQ/i.test(exchange.trim())
+}

@@ -5,13 +5,11 @@ import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import type { LucideIcon } from "lucide-react"
 import {
-  BlocksIcon,
   Building2Icon,
   LayoutGridIcon,
   MinusIcon,
   PlusIcon,
   RocketIcon,
-  StoreIcon,
 } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
@@ -50,43 +48,19 @@ const data = {
       title: "Dashboard",
       url: "/dashboard",
       icon: LayoutGridIcon,
-      items: [
-        { title: "Your Agents", url: "/dashboard?tab=agents" },
-        { title: "Your Workers", url: "/dashboard?tab=workers" },
-        { title: "Your Tasks", url: "/dashboard?tab=tasks" },
-      ],
+      items: [],
     },
     {
       title: "Launch Agent",
       url: "/launch-agent",
       icon: RocketIcon,
-      items: [{ title: "New research", url: "/launch-agent" }],
-    },
-    {
-      title: "Apps",
-      url: "/apps",
-      icon: BlocksIcon,
-      items: [
-        { title: "Browse", url: "/apps" },
-        { title: "My Apps", url: "/apps?tab=mine" },
-      ],
+      items: [{ title: "New agent", url: "/launch-agent" }],
     },
     {
       title: "Merchant",
       url: "/merchant",
       icon: Building2Icon,
       items: [{ title: "Register", url: "/merchant" }],
-    },
-    {
-      title: "Marketplace",
-      url: "/marketplace",
-      icon: StoreIcon,
-      items: [
-        { title: "Agents", url: "/marketplace" },
-        { title: "Workers", url: "/marketplace?tab=workers" },
-        { title: "Task", url: "/marketplace?tab=tasks" },
-        { title: "Brands", url: "/marketplace?tab=brands" },
-      ],
     },
   ],
 }
@@ -95,10 +69,7 @@ function isItemActive(url: string, pathname: string, search: string) {
   const [path, query = ""] = url.split("?")
   if (pathname !== path) {
     if (path === "/dashboard" && pathname.startsWith("/dashboard/")) {
-      return !query || query === "tab=tasks"
-    }
-    if (path === "/marketplace" && pathname.startsWith("/marketplace/brands")) {
-      return query === "tab=brands"
+      return true
     }
     return false
   }
@@ -109,21 +80,10 @@ function isItemActive(url: string, pathname: string, search: string) {
   )
 
   if (path === "/dashboard") {
-    const tab = current.get("tab") ?? "tasks"
-    return (wanted.get("tab") ?? "tasks") === tab
-  }
-  if (path === "/marketplace") {
-    const tab = current.get("tab") ?? "agents"
-    if (!query) return tab === "agents"
-    return wanted.get("tab") === tab
+    return true
   }
   if (path === "/launch-agent") {
     return true
-  }
-  if (path === "/apps") {
-    const tab = current.get("tab") ?? "browse"
-    if (!query) return tab === "browse"
-    return wanted.get("tab") === tab
   }
   if (wanted.size === 0) return true
   for (const [key, value] of wanted) {
@@ -157,12 +117,26 @@ function NavGroup({
     search.startsWith("?") ? search.slice(1) : search
   )
   const sectionActive =
-    (itemPath === "/marketplace" &&
-      pathname.startsWith("/marketplace/brands")) ||
-    (pathname === itemPath &&
-      (itemPath !== "/settings" ||
-        (current.get("tab") ?? "account") ===
-          (wanted.get("tab") ?? "account")))
+    (pathname === itemPath ||
+      (itemPath !== "/" && pathname.startsWith(`${itemPath}/`))) &&
+    (itemPath !== "/settings" ||
+      (current.get("tab") ?? "account") ===
+        (wanted.get("tab") ?? "account"))
+
+  if (item.items.length === 0) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={item.title}
+          isActive={sectionActive}
+          render={<Link href={item.url} />}
+        >
+          <Icon />
+          <span>{item.title}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
 
   if (collapsed) {
     return (

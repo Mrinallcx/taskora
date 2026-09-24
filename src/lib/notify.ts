@@ -35,8 +35,8 @@ export async function notifyJobDelivered(jobId: unknown) {
     body: JSON.stringify({
       from,
       to: [to],
-      subject: `Research memo ready: ${job.brief.slice(0, 80)}`,
-      text: `${job.brief}\n\n${memo || "Open the task to read the memo."}\n\n${url}`,
+      subject: `Research memo ready: ${(job.name || job.brief).slice(0, 80)}`,
+      text: `${job.name ? `${job.name}\n` : ""}${job.brief}\n\n${memo || "Open the task to read the memo."}\n\n${url}`,
     }),
   })
   if (!response.ok) {

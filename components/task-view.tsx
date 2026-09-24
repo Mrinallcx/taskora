@@ -7,14 +7,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { DashboardBackLink } from "@/components/dashboard-tabs"
-import { PriceHistoryChart } from "@/components/price-history-chart"
+import { OutputExport } from "@/components/output-export"
+import { PriceHistoryChart, type PriceSeries } from "@/components/price-history-chart"
 import { ReportMarkdown, stripSourcesSection } from "@/components/report-markdown"
+import { ResearchOrb } from "@/components/research-orb"
+import { formatExportWhen } from "@/src/domain/export-output"
+import { formatResponseTime } from "@/src/domain/job-run-stats"
+import { isResearchingStatus } from "@/src/domain/research-orb"
+import { stockJobAssignmentCopy } from "@/src/domain/stock-workers"
 
 type Citation = { url?: string; quote?: string; snapshotId?: string }
 type Artifact = {
@@ -28,12 +35,18 @@ type TaskPayload = {
   job: {
     _id: string
     status: string
+    name?: string
     brief: string
     instructions?: string
     domain: string
     budgetCents: number
     computeSpentCents: number
     cancelReason?: string
+    createdAt?: string
+    deliveredAt?: string
+    category?: string
+    workerId?: string
+    workerQueued?: boolean
   }
   plan: { estimatedCostCents: number } | null
   tasks: { _id: string; type: string; status: string }[]
@@ -41,7 +54,13 @@ type TaskPayload = {
   evaluations: { round: number; pass: boolean; hardFails: string[]; comments: string }[]
   events?: { type?: string }[]
   staffing?: string
-  coverage?: { searches: number; stored: number; citable: number; cited: number }
+  runStats?: {
+    at?: string | null
+    responseMs?: number | null
+    inputTokens?: number | null
+    outputTokens?: number | null
+    totalTokens?: number | null
+  }
 }
 
 function artifactBody(row: Artifact) {
@@ -53,24 +72,6 @@ function latestFor(tasks: TaskPayload["tasks"], artifacts: Artifact[], type: str
   if (!task) return null
   const matches = artifacts.filter((row) => String(row.taskId) === String(task._id))
   return matches.at(-1) ?? null
-}
-
-const LABELS: Record<string, string> = {
-  sources: "Sources",
-  findings: "Notes",
-  report: "Memo",
-  evaluate: "Review",
-}
-
-const PIPELINE = ["Plan", "Research", "Memo", "Review"] as const
-
-function pipelineStep(status: string, tasks: TaskPayload["tasks"]) {
-  if (["delivered", "settled"].includes(status)) return 4
-  if (["evaluating", "revision"].includes(status)) return 3
-  if (tasks.some((task) => task.type === "report" && task.status !== "queued")) return 2
-  if (status === "in_progress") return 1
-  if (status === "cancelled") return -1
-  return 0
 }
 
 export function TaskView({
@@ -93,8 +94,10 @@ export function TaskView({
     window?: string
     range?: string
     data: { month: string; price: number }[]
+    series?: PriceSeries[]
   } | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
+  const [chartImage, setChartImage] = useState("")
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/jobs/${id}`)
@@ -111,6 +114,7 @@ export function TaskView({
   }, [id])
 
   useEffect(() => {
+    setChartImage("")
     void load()
     const timer = setInterval(() => void load(), 2000)
     return () => clearInterval(timer)
@@ -131,6 +135,7 @@ export function TaskView({
             window?: string
             range?: string
             data: { month: string; price: number }[]
+            series?: PriceSeries[]
           } | null
         } | null) => {
           if (!cancelled && payload?.chart?.data?.length) setChart(payload.chart)
@@ -168,8 +173,15 @@ export function TaskView({
   }
 
   const { job, plan, tasks, artifacts = [] } = data
-  const hiredLine = data.staffing || staffing
   const overBudget = Boolean(plan && plan.estimatedCostCents > job.budgetCents)
+  const showActions = [
+    "draft",
+    "planning",
+    "plan_review",
+    "in_progress",
+    "evaluating",
+    "revision",
+  ].includes(job.status)
   const report = latestFor(tasks, artifacts, "report")
   const findings = latestFor(tasks, artifacts, "findings")
   const sources = latestFor(tasks, artifacts, "sources")
@@ -182,8 +194,6 @@ export function TaskView({
       )
   )
   const citations = (report?.citations ?? sources?.citations ?? []).filter((row) => row.url)
-  const current = pipelineStep(job.status, tasks)
-  const running = !["delivered", "settled", "cancelled"].includes(job.status)
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
@@ -196,95 +206,81 @@ export function TaskView({
             <Badge>{job.status.replaceAll("_", " ")}</Badge>
             <span className="text-muted-foreground text-sm">{job.domain}</span>
           </div>
-          <h2 className="font-heading mt-2 text-2xl">{job.brief}</h2>
-          {job.instructions?.trim() ? (
-            <p className="text-muted-foreground mt-2 whitespace-pre-wrap text-sm">
-              {job.instructions.trim()}
+          <p className="mt-3 text-sm leading-relaxed">{job.brief}</p>
+          <p className="text-muted-foreground mt-3 text-sm">
+            {["delivered", "settled"].includes(job.status) ? "Done by" : "By"}{" "}
+            <span className="text-foreground font-medium">
+              {job.name?.trim() || "Research desk"}
+            </span>
+          </p>
+          {isResearchingStatus(job.status) &&
+          (job.workerQueued || job.workerId || job.category === "stocks") ? (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium">
+              <ResearchOrb startedAt={job.createdAt} />
+              {stockJobAssignmentCopy(job)}
             </p>
           ) : null}
-          {hiredLine ? (
-            <p className="text-muted-foreground mt-1 text-sm">{hiredLine}</p>
-          ) : null}
-          {data.coverage ? (
+          {job.deliveredAt || job.createdAt ? (
             <p className="text-muted-foreground mt-1 text-sm">
-              {data.coverage.searches} searches · {data.coverage.citable} pages stored ·{" "}
-              {data.coverage.cited} cited
+              {formatExportWhen(new Date(job.deliveredAt ?? job.createdAt ?? Date.now()))}
             </p>
+          ) : null}
+          {data.runStats?.responseMs != null || data.runStats?.totalTokens != null ? (
+            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {data.runStats.responseMs != null ? (
+                <div>
+                  <dt className="text-muted-foreground text-xs">Total response time</dt>
+                  <dd className="mt-0.5 text-sm font-medium tabular-nums">
+                    {formatResponseTime(data.runStats.responseMs)}
+                  </dd>
+                </div>
+              ) : null}
+              {data.runStats.totalTokens != null ? (
+                <>
+                  <div>
+                    <dt className="text-muted-foreground text-xs">Input tokens</dt>
+                    <dd className="mt-0.5 text-sm font-medium tabular-nums">
+                      {(data.runStats.inputTokens ?? 0).toLocaleString()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground text-xs">Output tokens</dt>
+                    <dd className="mt-0.5 text-sm font-medium tabular-nums">
+                      {(data.runStats.outputTokens ?? 0).toLocaleString()}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground text-xs">Total tokens</dt>
+                    <dd className="mt-0.5 text-sm font-medium tabular-nums">
+                      {data.runStats.totalTokens.toLocaleString()}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
+            </dl>
           ) : null}
           {job.cancelReason ? (
             <p className="text-muted-foreground mt-1 text-sm">{job.cancelReason}</p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {job.status === "draft" ? (
-            <Button onClick={() => post(`/api/jobs/${id}/fund`)}>Fund</Button>
-          ) : null}
-          {job.status === "plan_review" ? (
-            <Button disabled={overBudget} onClick={() => post(`/api/jobs/${id}/approve-plan`)}>
-              Approve plan
-            </Button>
-          ) : null}
-          {job.status === "delivered" ? (
-            <>
-              <Button onClick={() => post(`/api/jobs/${id}/accept`)}>Accept</Button>
-              <Button variant="outline" onClick={() => post(`/api/jobs/${id}/dispute`)}>
-                Dispute
-              </Button>
-            </>
-          ) : null}
-          {["planning", "plan_review", "in_progress", "evaluating", "revision"].includes(
-            job.status
-          ) ? (
-            <Button variant="destructive" onClick={() => post(`/api/jobs/${id}/stop`)}>
-              Stop
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Progress</CardTitle>
-          <CardDescription>
-            {running
-              ? waitingGrok
-                ? "Grok Bot has the brief. Output appears below when it posts back."
-                : "Agent is working. Output appears below as it lands."
-              : "Run finished."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        {showActions ? (
           <div className="flex flex-wrap gap-2">
-            {PIPELINE.map((label, index) => {
-              const done = current > index
-              const active = current === index
-              return (
-                <Badge
-                  key={label}
-                  variant={done || active ? "secondary" : "outline"}
-                >
-                  {label}
-                  {done ? " · done" : active && running ? " · now" : ""}
-                </Badge>
-              )
-            })}
+            {job.status === "draft" ? (
+              <Button onClick={() => post(`/api/jobs/${id}/fund`)}>Fund</Button>
+            ) : null}
+            {job.status === "plan_review" ? (
+              <Button disabled={overBudget} onClick={() => post(`/api/jobs/${id}/approve-plan`)}>
+                Approve plan
+              </Button>
+            ) : null}
+            {job.status !== "draft" ? (
+              <Button variant="destructive" onClick={() => post(`/api/jobs/${id}/stop`)}>
+                Stop
+              </Button>
+            ) : null}
           </div>
-          {tasks.length > 0 ? (
-            <div className="flex flex-col gap-2 text-sm">
-              {tasks.map((task) => (
-                <div key={task._id} className="flex justify-between gap-3">
-                  <span>{LABELS[task.type] ?? task.type}</span>
-                  <span className="text-muted-foreground">
-                    {task.status.replaceAll("_", " ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-sm">Waiting for the agent to start.</p>
-          )}
-        </CardContent>
-      </Card>
+        ) : null}
+      </div>
 
       <Card>
         <CardHeader>
@@ -294,18 +290,46 @@ export function TaskView({
               ? "Cited memo"
               : notes
                 ? "Working notes — memo follows"
-                : waitingGrok
-                  ? "Waiting on Grok Bot."
-                  : "Memo and sources show here."}
+                : job.workerQueued
+                  ? "Waiting for a worker."
+                  : waitingGrok
+                    ? "Worker assigned"
+                    : "Memo and sources show here."}
           </CardDescription>
+          <CardAction>
+            <OutputExport
+              agentName={job.name?.trim() || "Research desk"}
+              at={new Date(job.deliveredAt ?? job.createdAt ?? Date.now())}
+              brief={job.brief}
+              instructions={job.instructions}
+              memo={memo || notes}
+              citations={citations}
+              series={
+                chart
+                  ? chart.series?.length
+                    ? chart.series
+                    : [{ label: chart.label, symbol: chart.symbol, data: chart.data }]
+                  : undefined
+              }
+              chartImage={chartImage || undefined}
+              domain={job.domain}
+            />
+          </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           {chart && job.domain === "finance" ? (
             <PriceHistoryChart
-              title={`${chart.label} · ${chart.window ?? "1 year price"}`}
-              description={`${chart.symbol} USD monthly close${chart.range ? ` · ${chart.range}` : ""}`}
-              source={chart.provider}
-              data={chart.data}
+              title={chart.label}
+              interval={chart.window ?? "1 year"}
+              provider={chart.provider}
+              series={
+                chart.series?.length
+                  ? chart.series
+                  : [{ label: chart.label, symbol: chart.symbol, data: chart.data }]
+              }
+              onChartImage={(url) => {
+                setChartImage((prev) => (prev === url ? prev : url))
+              }}
             />
           ) : job.domain === "finance" && chartLoading ? (
             <p className="text-muted-foreground text-sm">Loading price chart…</p>

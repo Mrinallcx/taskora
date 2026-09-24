@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { ListingCard, TaskCard } from "@/components/dashboard-cards"
+import { ListingCard } from "@/components/dashboard-cards"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Dialog,
@@ -43,23 +43,11 @@ export type MarketplaceListing = {
   defaultBrief?: string
 }
 
-export type MarketplaceTask = {
-  _id: string
-  domain: string
-  brief: string
-  status: string
-  createdAt?: string
-  budgetCents?: number
-}
-
-function hireCopy(kind: "agent" | "worker" | "task") {
+function hireCopy(kind: "agent" | "worker") {
   if (kind === "agent") {
     return "This agent will plan the job and hire a worker. You still need a brief, domain, and budget to start."
   }
-  if (kind === "worker") {
-    return "This worker will research and write the memo. You still need a brief, domain, and budget to start."
-  }
-  return "This runs a new funded job from this brief. Edit anything before you hire."
+  return "This worker will research and write the memo. You still need a brief, domain, and budget to start."
 }
 
 async function launchHiredJob(input: {
@@ -226,29 +214,6 @@ export function MarketplaceListingCard({
         defaultBudget={budgetFromListing(listing.priceCents ?? 0)}
         listingId={listing._id}
         formId={`hire-${listing._id}`}
-      />
-    </Dialog>
-  )
-}
-
-export function MarketplaceTaskCard({ job }: { job: MarketplaceTask }) {
-  return (
-    <Dialog>
-      <TaskCard
-        job={{
-          ...job,
-          createdAt: job.createdAt ? new Date(job.createdAt) : undefined,
-        }}
-        href={null}
-        action={<HireButton />}
-      />
-      <HireForm
-        title="Hire this task"
-        description={hireCopy("task")}
-        defaultBrief={job.brief}
-        defaultDomain={job.domain === "news" ? "general" : job.domain}
-        defaultBudget={budgetFromListing(job.budgetCents ?? 0)}
-        formId={`hire-task-${job._id}`}
       />
     </Dialog>
   )

@@ -3,10 +3,7 @@ import { notFound } from "next/navigation"
 
 import { AppShell } from "@/components/app-shell"
 import { DashboardBackLink } from "@/components/dashboard-tabs"
-import {
-  MarketplaceListingCard,
-  MarketplaceTaskCard,
-} from "@/components/marketplace-cards"
+import { MarketplaceListingCard } from "@/components/marketplace-cards"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -15,9 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { connect } from "@/src/db/connect"
-import { Job, Listing, Merchant } from "@/src/db/models"
+import { Listing, Merchant } from "@/src/db/models"
 import { getSessionUser } from "@/src/lib/auth"
-import { asObjectId, hex } from "@/src/lib/ids"
+import { hex } from "@/src/lib/ids"
 
 export const dynamic = "force-dynamic"
 
@@ -52,33 +49,18 @@ export default async function MarketplaceBrandPage({
   if (merchant.status !== "live" && !owned) notFound()
   if (!merchant.isPublic && !owned) notFound()
 
-  const ownerId = asObjectId(merchant.ownerUserId)
-  const [agents, workers, tasks] = await Promise.all([
-    Listing.find({
-      ownerUserId: merchant.ownerUserId,
-      kind: "lead",
-      status: "live",
-      underMerchant: true,
-    }).sort({ createdAt: -1 }),
-    Listing.find({
-      ownerUserId: merchant.ownerUserId,
-      kind: "worker",
-      status: "live",
-      underMerchant: true,
-    }).sort({ createdAt: -1 }),
-    ownerId
-      ? Job.find({
-          userId: ownerId,
-          underMerchant: true,
-        }).sort({ createdAt: -1 })
-      : [],
-  ])
+  const agents = await Listing.find({
+    ownerUserId: merchant.ownerUserId,
+    kind: "lead",
+    status: "live",
+    underMerchant: true,
+  }).sort({ createdAt: -1 })
 
   return (
     <AppShell title={merchant.name}>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <DashboardBackLink href="/marketplace?tab=brands" label="Brands" />
+          <DashboardBackLink href="/marketplace" label="Marketplace" />
           {owned ? (
             <Button
               size="sm"
@@ -154,69 +136,6 @@ export default async function MarketplaceBrandPage({
                     priceCents: listing.priceCents,
                     tools: listing.tools,
                     defaultBrief: listing.defaultBrief,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <p className="mb-3 text-sm font-medium">Workers</p>
-          {workers.length === 0 ? (
-            <EmptyCard
-              title="No workers under this brand"
-              hint={
-                owned
-                  ? "Launch a Worker and turn on Publish under your organization."
-                  : "This brand has not listed a worker yet."
-              }
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {workers.map((listing) => (
-                <MarketplaceListingCard
-                  key={hex(listing._id)}
-                  listing={{
-                    _id: hex(listing._id),
-                    kind: listing.kind,
-                    name: listing.name,
-                    slug: listing.slug,
-                    summary: listing.summary,
-                    skills: listing.skills,
-                    priceCents: listing.priceCents,
-                    tools: listing.tools,
-                    defaultBrief: listing.defaultBrief,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <p className="mb-3 text-sm font-medium">Tasks</p>
-          {tasks.length === 0 ? (
-            <EmptyCard
-              title="No tasks under this brand"
-              hint={
-                owned
-                  ? "Launch a Task and turn on Publish under your organization."
-                  : "This brand has not listed a task yet."
-              }
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {tasks.map((job) => (
-                <MarketplaceTaskCard
-                  key={hex(job._id)}
-                  job={{
-                    _id: hex(job._id),
-                    domain: job.domain,
-                    brief: job.brief,
-                    status: job.status,
-                    createdAt: job.createdAt?.toISOString(),
-                    budgetCents: job.budgetCents,
                   }}
                 />
               ))}

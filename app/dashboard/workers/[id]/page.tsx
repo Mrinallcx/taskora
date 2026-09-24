@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card"
 import { connect } from "@/src/db/connect"
 import { Listing } from "@/src/db/models"
+import { launchedTaskFromJob } from "@/src/domain/launched-agents"
 import { jobsForWorker, staffingCaption, staffingForJobs } from "@/src/domain/listing-history"
 import { parseSkills } from "@/src/domain/skills"
 import { getSessionUser } from "@/src/lib/auth"
@@ -43,7 +44,7 @@ export default async function DashboardWorkerPage({
   return (
     <AppShell title="Worker">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-6">
-        <DashboardBackLink href="/dashboard?tab=workers" label="Your Workers" />
+        <DashboardBackLink href="/dashboard" label="Dashboard" />
         <div>
           <p className="text-muted-foreground text-sm capitalize">{listing.kind}</p>
           <h2 className="font-heading mt-1 text-2xl">{listing.name || listing.slug}</h2>
@@ -65,7 +66,7 @@ export default async function DashboardWorkerPage({
           {latest ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <TaskCard
-                job={latest}
+                job={launchedTaskFromJob(latest)}
                 staffing={staffingCaption(
                   staffing.get(hex(latest._id)) ?? { workerNames: [] }
                 )}
@@ -89,7 +90,7 @@ export default async function DashboardWorkerPage({
               {earlier.map((job) => (
                 <TaskCard
                   key={hex(job._id)}
-                  job={job}
+                  job={launchedTaskFromJob(job)}
                   staffing={staffingCaption(
                     staffing.get(hex(job._id)) ?? { workerNames: [] }
                   )}

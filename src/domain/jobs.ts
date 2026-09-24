@@ -20,10 +20,16 @@ import { isCitableTool } from "@/src/domain/evidence"
 import { denylistHit } from "@/src/domain/denylist"
 import {
   ensureResearchHandoffListing,
-  grokBotTestEnabled,
-  handoffJobToGrokBot,
+  grokBotEnabledForJob,
 } from "@/src/domain/grok-bot"
+import { isStockPoolJob } from "@/src/domain/stock-workers"
+import { assignNextQueuedStockJob, assignStockWorkerOrQueue } from "@/src/domain/stock-worker-runtime"
 import { resolveFinanceAsset } from "@/src/domain/finance-asset"
+import {
+  isLaunchCategory,
+  resolveNasdaqStocks,
+} from "@/src/domain/stock-listings"
+import { briefStockMismatch } from "@/src/domain/stock-scope"
 import { ApiError } from "@/src/domain/errors"
 import { needFromBrief } from "@/src/domain/skills"
 import {
@@ -69,11 +75,24 @@ function domainFromBrief(brief: string) {
   return "general"
 }
 
+function slugifyAgent(name: string) {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40)
+  return `${base || "agent"}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export async function createJob(
   user: { _id: unknown; clerkUserId: string },
   body: {
     brief: string
+    name?: string
     instructions?: string
+    category?: string
+    symbol?: string
+    symbols?: string[]
     domain?: string
     budgetCents?: number
     computeBudgetCents?: number
@@ -94,17 +113,49 @@ export async function createJob(
   if (!brief || brief.length > 8000) {
     throw new ApiError("invalid", "Brief is required and must be under 8k chars")
   }
+  const name = (body.name ?? "").trim()
+  if (name.length > 80) {
+    throw new ApiError("invalid", "Name must be under 80 characters")
+  }
   const instructions = (body.instructions ?? "").trim()
   if (instructions.length > 8000) {
     throw new ApiError("invalid", "Instructions must be under 8k chars")
   }
-  if (denylistHit(brief) || denylistHit(instructions)) {
+  if (denylistHit(brief) || denylistHit(instructions) || denylistHit(name)) {
     throw new ApiError("denylist", "Brief hits the denylist", 400)
   }
+  const requested = [
+    ...(Array.isArray(body.symbols) ? body.symbols : []),
+    body.symbol ?? "",
+  ]
+  const category = isLaunchCategory(body.category)
+    ? body.category
+    : requested.some((row) => String(row ?? "").trim())
+      ? "stocks"
+      : ""
+  let symbol = ""
+  let companyName = ""
+  let exchange = ""
+  let symbols: { symbol: string; name: string; exchange: string }[] = []
+  if (category === "stocks") {
+    const listings = await resolveNasdaqStocks(requested)
+    symbols = listings.map((row) => ({
+      symbol: row.symbol,
+      name: row.name,
+      exchange: row.exchange,
+    }))
+    symbol = listings[0].symbol
+    companyName = listings[0].name
+    exchange = listings[0].exchange
+    const mismatch = briefStockMismatch(brief, instructions, listings)
+    if (mismatch) throw new ApiError("invalid", mismatch)
+  }
   const domain =
-    body.domain && ["general", "finance", "academic"].includes(body.domain)
-      ? body.domain
-      : domainFromBrief(`${brief}\n${instructions}`)
+    category === "stocks"
+      ? "finance"
+      : body.domain && ["general", "finance", "academic"].includes(body.domain)
+        ? body.domain
+        : domainFromBrief(`${brief}\n${instructions}`)
   const budgetCents = body.budgetCents ?? 2000
   if (budgetCents < 2000 || budgetCents > 10000) {
     throw new ApiError("budget", "Budget must be between 2000 and 10000 cents")
@@ -138,19 +189,42 @@ export async function createJob(
     listingId = listing._id
   }
   const useAppIds = await ownedAppIds(user._id, body.useAppIds)
+  const owner = hex(user._id as { toString(): string })
   const underMerchant =
     Boolean(body.underMerchant) &&
-    Boolean(
-      await Merchant.exists({
-        ownerUserId: hex(user._id as { toString(): string }),
-      })
-    )
+    Boolean(await Merchant.exists({ ownerUserId: owner }))
+  const isPublic = Boolean(body.isPublic)
+  if (!listingId && (isPublic || underMerchant)) {
+    const listing = await Listing.create({
+      slug: slugifyAgent(name || brief),
+      kind: "lead",
+      ownerUserId: owner,
+      vertical: "research",
+      priceCents: budgetCents,
+      runtime: "hosted_prompt",
+      status: "live",
+      name: name || brief.slice(0, 80),
+      summary: brief.slice(0, 2000),
+      prompt: instructions,
+      tools: toolsForDomain(domain),
+      isPublic,
+      underMerchant,
+      defaultBrief: brief,
+    })
+    listingId = listing._id
+  }
   const job = await Job.create({
     userId: user._id,
     clerkUserId: user.clerkUserId,
     domain,
     brief,
+    name,
     instructions,
+    category,
+    symbol,
+    companyName,
+    exchange,
+    symbols,
     status: "draft",
     budgetCents,
     computeBudgetCents,
@@ -159,20 +233,23 @@ export async function createJob(
     useAppIds,
     fallbackToPlatform: Boolean(body.fallbackToPlatform),
     listingId,
-    isPublic: Boolean(body.isPublic),
+    isPublic,
     underMerchant,
     autoApprovePlan: Boolean(body.autoApprovePlan),
     emailOnDeliver: Boolean(body.emailOnDeliver),
     notifyEmail: body.notifyEmail ?? "",
   })
-  await emit(job._id, "job_created", { domain, budgetCents })
+  await emit(job._id, "job_created", { domain, category, budgetCents })
   return job
 }
 
 export async function fundJob(userId: unknown, jobId: string) {
   const id = asObjectId(jobId)
   if (!id) throw new ApiError("not_found", "Job not found", 404)
-  if (grokBotTestEnabled()) {
+  const existing = await Job.findOne({ _id: id, userId }).select(
+    "category domain symbol symbols"
+  )
+  if (existing && grokBotEnabledForJob(existing)) {
     return fundJobViaGrokBot(userId, id)
   }
   const defaultLead =
@@ -258,7 +335,7 @@ async function fundJobViaGrokBot(
     await emit(row._id, "funded", { escrowCents: row.escrowCents, via: "grok_bot" }, session)
     return row
   })
-  await handoffJobToGrokBot(job)
+  await assignStockWorkerOrQueue(job)
   return job
 }
 
@@ -441,16 +518,18 @@ export async function settleJob(
 export async function stopJob(userId: unknown, jobId: string, reason = "user_stop") {
   const id = asObjectId(jobId)
   if (!id) throw new ApiError("not_found", "Job not found", 404)
-  return withSession(async (session) => {
+  const cancelled = await withSession(async (session) => {
     const job = await Job.findOne({ _id: id, userId }, null, sessionOpts(session))
     if (!job) throw new ApiError("not_found", "Job not found", 404)
     if (!canStop(job.status as JobStatus)) {
       throw new ApiError("conflict", "Job cannot be stopped", 409)
     }
-    const cancelled = await cancelActiveJob(job, session, "stop", reason)
+    const stopped = await cancelActiveJob(job, session, "stop", reason)
     await emit(job._id, "stopped", { reason }, session)
-    return cancelled
+    return stopped
   })
+  if (isStockPoolJob(cancelled)) await assignNextQueuedStockJob()
+  return cancelled
 }
 
 async function cancelActiveJob(

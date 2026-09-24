@@ -10,7 +10,22 @@ const schema = new Schema(
       required: true,
     },
     brief: { type: String, required: true },
+    name: { type: String, default: "" },
     instructions: { type: String, default: "" },
+    category: { type: String, default: "" },
+    symbol: { type: String, default: "" },
+    companyName: { type: String, default: "" },
+    exchange: { type: String, default: "" },
+    symbols: {
+      type: [
+        {
+          symbol: { type: String, required: true },
+          name: { type: String, default: "" },
+          exchange: { type: String, default: "NASDAQ" },
+        },
+      ],
+      default: [],
+    },
     status: { type: String, required: true, default: "draft" },
     budgetCents: { type: Number, required: true },
     computeBudgetCents: { type: Number, default: 500 },
@@ -44,6 +59,8 @@ const schema = new Schema(
     planSubmittedAt: { type: Date },
     deliveredAt: { type: Date },
     cancelReason: { type: String },
+    workerId: { type: String, default: "" },
+    workerQueued: { type: Boolean, default: false },
   },
   { timestamps: true, collection: "jobs" }
 )
@@ -51,5 +68,7 @@ const schema = new Schema(
 schema.index({ userId: 1, status: 1 })
 schema.index({ status: 1, deliveredAt: 1 })
 schema.index({ status: 1, planSubmittedAt: 1 })
+schema.index({ workerId: 1, status: 1 })
+schema.index({ workerQueued: 1, createdAt: 1 })
 
 export const Job = registered("Job", schema)

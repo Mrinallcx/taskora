@@ -1,30 +1,136 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import { BorderBeam } from "border-beam"
+import { useTheme } from "next-themes"
 import { toast } from "sonner"
 
+import { StockPicker } from "@/components/stock-picker"
+import { StockWorkersAvailable } from "@/components/stock-workers-available"
 import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  launchedAgentHref,
+  type LaunchedAgentOption,
+} from "@/src/domain/launched-agents"
+import { briefStockMismatch } from "@/src/domain/stock-scope"
+import {
+  LAUNCH_CATEGORIES,
+  type LaunchCategory,
+  type StockListing,
+} from "@/src/domain/stock-types"
+
+const NEW_AGENT = "new"
+
+function BeamField({ children }: { children: ReactNode }) {
+  const { resolvedTheme } = useTheme()
+  const [focused, setFocused] = useState(false)
+  const light = resolvedTheme !== "dark"
+  return (
+    <BorderBeam
+      className="w-full"
+      size="md"
+      colorVariant="colorful"
+      strength={focused ? 1 : light ? 0.88 : 0.78}
+      brightness={light ? 1.5 : 1.35}
+      glowSize={1.15}
+      duration={2.6}
+      active
+      theme={light ? "light" : "dark"}
+    >
+      <div
+        className="bg-background rounded-xl border border-input"
+        onFocusCapture={() => setFocused(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+            setFocused(false)
+          }
+        }}
+      >
+        {children}
+      </div>
+    </BorderBeam>
+  )
+}
 
 function errorMessage(payload: { error?: string | { message?: string } }) {
   if (typeof payload.error === "string") return payload.error
   return payload.error?.message
 }
 
-export function LaunchAgentForm() {
+export function LaunchAgentForm({
+  merchant,
+  agents = [],
+}: {
+  merchant?: { name: string } | null
+  agents?: LaunchedAgentOption[]
+}) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
+  const [onMarketplace, setOnMarketplace] = useState(false)
+  const [underMerchant, setUnderMerchant] = useState(false)
+  const [category, setCategory] = useState<LaunchCategory>("stocks")
+  const [stocks, setStocks] = useState<StockListing[]>(agents[0]?.symbols ?? [])
+  const [picked, setPicked] = useState(agents[0]?.slug ?? NEW_AGENT)
+  const [name, setName] = useState(agents[0]?.name ?? "")
+  const existing = agents.find((row) => row.slug === picked) ?? null
+
+  function applyAgent(slug: string) {
+    setPicked(slug)
+    const agent = agents.find((row) => row.slug === slug)
+    if (!agent) {
+      setName("")
+      setStocks([])
+      return
+    }
+    setName(agent.name)
+    if (agent.category === "stocks" || agent.symbols.length > 0) {
+      setCategory("stocks")
+      setStocks(agent.symbols)
+    }
+  }
+
+  function resetLocal() {
+    setOnMarketplace(false)
+    setUnderMerchant(false)
+    setCategory("stocks")
+    setStocks([])
+    setPicked(NEW_AGENT)
+    setName("")
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
     const data = new FormData(form)
+    const agentName = name.trim()
     const brief = String(data.get("brief") ?? "").trim()
     const instructions = String(data.get("instructions") ?? "").trim()
+    if (!agentName) {
+      toast.error("Add an agent name.")
+      return
+    }
+    if (stocks.length === 0) {
+      toast.error("Pick at least one NASDAQ-listed stock.")
+      return
+    }
     if (!brief) {
       toast.error("Add a job description.")
+      return
+    }
+    const mismatch = briefStockMismatch(brief, instructions, stocks)
+    if (mismatch) {
+      toast.error(mismatch)
       return
     }
     setPending(true)
@@ -33,10 +139,16 @@ export function LaunchAgentForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          name: agentName,
           brief,
           instructions,
+          category,
+          symbol: stocks[0]?.symbol,
+          symbols: stocks.map((row) => row.symbol),
           autoApprovePlan: true,
           budgetCents: 2000,
+          isPublic: onMarketplace,
+          underMerchant: Boolean(merchant) && underMerchant,
         }),
       })
       const json = (await created.json()) as {
@@ -52,63 +164,173 @@ export function LaunchAgentForm() {
         const fail = (await funded.json()) as {
           error?: string | { message?: string }
         }
-        toast.error(errorMessage(fail) ?? "Job created, but it could not start.")
-        router.push(`/dashboard/${json.id}`)
+        toast.error(errorMessage(fail) ?? "Job created, but the agent could not start.")
+        router.push(launchedAgentHref(agentName))
         return
       }
-      toast.success("Research started.")
+      toast.success(
+        existing ? `New task is running on ${agentName}.` : "Agent is running."
+      )
       form.reset()
-      router.push(`/dashboard/${json.id}`)
+      resetLocal()
+      router.push(launchedAgentHref(agentName))
       router.refresh()
     } catch {
-      toast.error("Could not launch research.")
+      toast.error("Could not launch the agent.")
     } finally {
       setPending(false)
     }
   }
 
   return (
-    <form className="flex flex-col gap-3" onSubmit={onSubmit}>
-      <h2 className="font-heading text-3xl">Launch research</h2>
-      <p className="text-muted-foreground text-sm">
-        Job description is the question. Research instructions tell it how to
-        search, cite, and structure the memo.
-      </p>
-      <FieldGroup className="gap-3">
-        <Field className="gap-1">
-          <FieldLabel htmlFor="job-brief">Job description</FieldLabel>
-          <FieldDescription>What should be researched.</FieldDescription>
-          <Textarea
-            id="job-brief"
-            name="brief"
+    <form className="flex flex-col gap-5" onSubmit={onSubmit} onReset={resetLocal}>
+      <div>
+        <h2 className="font-heading text-2xl">Launch agent</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Name it, pick stocks, say what to research.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {agents.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Agent</span>
+            <Select
+              value={picked}
+              onValueChange={(value) => {
+                if (typeof value === "string") applyAgent(value)
+              }}
+            >
+              <SelectTrigger id="job-agent" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NEW_AGENT}>New agent</SelectItem>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.slug} value={agent.slug}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="job-name">
+            Name
+          </label>
+          <Input
+            id="job-name"
+            name="name"
+            value={name}
+            onChange={(event) => {
+              if (!existing) setName(event.target.value)
+            }}
+            readOnly={Boolean(existing)}
             required
-            rows={6}
-            maxLength={8000}
-            className="min-h-28 field-sizing-fixed"
-            placeholder="How has Solana’s market changed since 2020: price path, FTX, outages, holders, demand through 2027. Use CoinGecko and primary sources."
+            maxLength={80}
+            placeholder="Apple desk"
           />
-        </Field>
-        <Field className="gap-1">
-          <FieldLabel htmlFor="job-instructions">Research instructions</FieldLabel>
-          <FieldDescription>
-            How to research: sources, structure, tables, tone. Optional but better
-            memos come from a tight brief here.
-          </FieldDescription>
-          <Textarea
-            id="job-instructions"
-            name="instructions"
-            rows={8}
-            maxLength={8000}
-            className="min-h-36 field-sizing-fixed"
-            placeholder={`Use live price sources (CoinGecko or similar). Cite official or primary write-ups plus at least one critical or risk-focused source. Include a short yearly price or market-cap table. Write markdown. Do not invent figures.`}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Stocks</span>
+          <div className="flex items-start rounded-lg border border-input dark:bg-input/30">
+            <Select
+              value={category}
+              onValueChange={(value) => {
+                if (value === "stocks") setCategory(value)
+                setStocks([])
+              }}
+            >
+              <SelectTrigger
+                id="job-category"
+                className="h-8 w-24 shrink-0 rounded-none border-0 border-r border-input dark:bg-transparent dark:hover:bg-transparent"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LAUNCH_CATEGORIES.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {category === "stocks" ? (
+              <StockPicker
+                value={stocks}
+                onChange={setStocks}
+                disabled={pending}
+              />
+            ) : null}
+          </div>
+          {category === "stocks" ? <StockWorkersAvailable /> : null}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="job-brief">
+            Description
+          </label>
+          <BeamField>
+            <Textarea
+              id="job-brief"
+              name="brief"
+              required
+              rows={4}
+              maxLength={8000}
+              className="min-h-28 field-sizing-fixed rounded-xl border-0 bg-transparent shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+              placeholder="Compare AAPL and MSFT since 2020."
+            />
+          </BeamField>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="job-instructions">
+            Instructions
+          </label>
+          <BeamField>
+            <Textarea
+              id="job-instructions"
+              name="instructions"
+              rows={4}
+              maxLength={8000}
+              className="min-h-28 field-sizing-fixed rounded-xl border-0 bg-transparent shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+              placeholder="Cite 10-Ks. No invented figures."
+            />
+          </BeamField>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Show on marketplace</span>
+          <Switch
+            id="job-marketplace"
+            checked={onMarketplace}
+            onCheckedChange={setOnMarketplace}
+            disabled={pending}
           />
-        </Field>
-      </FieldGroup>
-      <div className="flex flex-wrap gap-2 pt-2">
+        </label>
+        {merchant ? (
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>Register under {merchant.name}</span>
+            <Switch
+              id="job-merchant"
+              checked={underMerchant}
+              onCheckedChange={setUnderMerchant}
+              disabled={pending}
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Launching" : "Launch"}
+          {pending ? "Starting…" : "Launch"}
         </Button>
-        <Button type="reset" variant="outline" size="sm" disabled={pending}>
+        <Button type="reset" variant="ghost" size="sm" disabled={pending}>
           Clear
         </Button>
       </div>

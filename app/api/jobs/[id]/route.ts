@@ -14,6 +14,7 @@ import {
 } from "@/src/db/models"
 import { jobToolPack } from "@/src/domain/jobs"
 import { computeCoverage } from "@/src/domain/evidence"
+import { jobRunStats } from "@/src/domain/job-run-stats"
 import { staffingCaption, staffingForJobs } from "@/src/domain/listing-history"
 import { ApiError } from "@/src/domain/errors"
 import { jsonError } from "@/src/lib/http"
@@ -93,6 +94,11 @@ export async function GET(
       staffing: staff ? staffingCaption(staff) : "",
       toolPack: jobToolPack(job.domain),
       coverage,
+      runStats: jobRunStats({
+        createdAt: job.createdAt,
+        deliveredAt: job.deliveredAt,
+        events,
+      }),
     })
   } catch (error) {
     return jsonError(error)

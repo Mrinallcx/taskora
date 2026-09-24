@@ -5,11 +5,64 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 import { Artifact, Event, Job, Listing, Task } from "@/src/db/models"
 import { connect } from "@/src/db/connect"
 import { ApiError } from "@/src/domain/errors"
+import { extractTokenUsage } from "@/src/domain/job-run-stats"
 import { timeoutMs } from "@/src/domain/timeouts"
 import { asObjectId, hex } from "@/src/lib/ids"
+import { isStockPoolJob, stockWorkerById } from "@/src/domain/stock-workers"
 
 const DISPATCHED = "grok_bot_dispatched"
 const CALLBACK_FILE = ".grok-callback-base"
+
+export function grokDeskForJob(job: {
+  category?: string
+  domain?: string
+  symbol?: string
+  symbols?: unknown[]
+  workerId?: string
+}) {
+  if (job.workerId) {
+    const assigned = stockWorkerById(job.workerId)
+    if (assigned?.webhookUrl) {
+      return {
+        webhookUrl: assigned.webhookUrl,
+        webhookKey: assigned.webhookKey,
+      }
+    }
+  }
+  const stocksUrl = (process.env.GROK_BOT_STOCKS_WEBHOOK_URL || "").trim()
+  const useStocks =
+    isStockPoolJob(job) ||
+    (Boolean(stocksUrl) && job.domain === "finance")
+  if (useStocks) {
+    return {
+      webhookUrl: (
+        stocksUrl ||
+        process.env.GROK_BOT_WEBHOOK_URL ||
+        ""
+      ).trim(),
+      webhookKey: (
+        process.env.GROK_BOT_STOCKS_WEBHOOK_KEY ||
+        process.env.GROK_BOT_WEBHOOK_KEY ||
+        ""
+      ).trim(),
+    }
+  }
+  return {
+    webhookUrl: (process.env.GROK_BOT_WEBHOOK_URL || "").trim(),
+    webhookKey: (process.env.GROK_BOT_WEBHOOK_KEY || "").trim(),
+  }
+}
+
+export function grokBotEnabledForJob(job: {
+  category?: string
+  domain?: string
+  symbol?: string
+  symbols?: unknown[]
+}) {
+  if (process.env.VITEST) return false
+  if (isStockPoolJob(job)) return true
+  return Boolean(grokDeskForJob(job).webhookUrl)
+}
 
 export function grokBotTestEnabled() {
   return (
@@ -108,10 +161,86 @@ async function workerListing() {
 
 export { ensureResearchHandoffListing }
 
-export function researchPrompt(job: { brief: string; instructions?: string }) {
+function subjectLine(job: {
+  symbol?: string
+  companyName?: string
+  exchange?: string
+  symbols?: { symbol?: string; name?: string; exchange?: string }[]
+}) {
+  const rows =
+    job.symbols?.filter((row) => row.symbol?.trim()).map((row) => ({
+      symbol: String(row.symbol).trim(),
+      name: String(row.name ?? "").trim(),
+      exchange: String(row.exchange ?? "").trim() || "NASDAQ",
+    })) ?? []
+  if (rows.length === 0 && job.symbol?.trim()) {
+    rows.push({
+      symbol: job.symbol.trim(),
+      name: job.companyName?.trim() || "",
+      exchange: job.exchange?.trim() || "NASDAQ",
+    })
+  }
+  if (rows.length === 0) return ""
+  const names = rows
+    .map((row) =>
+      row.name ? `${row.name} (${row.symbol})` : row.symbol
+    )
+    .join(", ")
+  if (rows.length === 1) {
+    return `Subject: ${names} listed on NASDAQ. Research this NASDAQ-listed US stock only.\n\n`
+  }
+  return `Subject: ${names} listed on NASDAQ. This job is an in-scope side-by-side comparison of these ${rows.length} NASDAQ-listed US stocks. Do not refuse for ticker count. Stay on these tickers only.\n\n`
+}
+
+export function researchPrompt(job: {
+  brief: string
+  instructions?: string
+  symbol?: string
+  companyName?: string
+  exchange?: string
+  symbols?: { symbol?: string; name?: string; exchange?: string }[]
+}) {
+  const subject = subjectLine(job)
   const extra = (job.instructions ?? "").trim()
-  if (!extra) return job.brief
-  return `${job.brief.trim()}\n\nResearch instructions:\n${extra}`
+  if (!extra) return `${subject}${job.brief}`
+  return `${subject}${job.brief.trim()}\n\nResearch instructions:\n${extra}`
+}
+
+const CALLBACK_INSTRUCTION =
+  'Do the entire brief using live sources where asked. If the brief names more than one selected NASDAQ ticker, write one comparison memo — that is in scope. Follow any research instructions in the brief. Write the memo in markdown. Then HTTP POST JSON { "markdown": "<full memo>" } to callbackUrl. Do not wait for the user. Do not include secrets.'
+
+export function grokWebhookBody(input: {
+  jobId: string
+  brief: string
+  callbackUrl: string
+  category?: string
+  symbol?: string
+  companyName?: string
+  symbols?: { symbol: string; name: string; exchange: string }[]
+}) {
+  const prompt = [
+    input.brief.trim(),
+    "",
+    CALLBACK_INSTRUCTION,
+    "",
+    `jobId: ${input.jobId}`,
+    `callbackUrl: ${input.callbackUrl}`,
+  ].join("\n")
+  return {
+    event: "taskora.job",
+    prompt,
+    text: prompt,
+    content: prompt,
+    summary: input.brief.trim().slice(0, 240),
+    jobId: input.jobId,
+    brief: input.brief,
+    callbackUrl: input.callbackUrl,
+    category: input.category || "",
+    symbol: input.symbol || "",
+    companyName: input.companyName || "",
+    symbols: input.symbols ?? [],
+    instruction: CALLBACK_INSTRUCTION,
+  }
 }
 
 export async function pingGrokBot(input: {
@@ -120,6 +249,10 @@ export async function pingGrokBot(input: {
   webhookUrl?: string
   webhookKey?: string
   callbackBase?: string
+  category?: string
+  symbol?: string
+  companyName?: string
+  symbols?: { symbol: string; name: string; exchange: string }[]
 }) {
   const webhookUrl = (input.webhookUrl || process.env.GROK_BOT_WEBHOOK_URL || "").trim()
   const webhookKey = (input.webhookKey || process.env.GROK_BOT_WEBHOOK_KEY || "").trim()
@@ -137,14 +270,17 @@ export async function pingGrokBot(input: {
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      event: "taskora.job",
-      jobId: input.jobId,
-      brief: input.brief,
-      callbackUrl,
-      instruction:
-        "Do the entire brief using live sources where asked. Follow any research instructions in the brief. Write the memo in markdown. Then HTTP POST JSON { \"markdown\": \"<full memo>\" } to callbackUrl. Do not wait for the user. Do not include secrets.",
-    }),
+    body: JSON.stringify(
+      grokWebhookBody({
+        jobId: input.jobId,
+        brief: input.brief,
+        callbackUrl,
+        category: input.category,
+        symbol: input.symbol,
+        companyName: input.companyName,
+        symbols: input.symbols,
+      })
+    ),
   })
   const text = await response.text()
   return {
@@ -195,11 +331,27 @@ export async function handoffJobToGrokBot(
     webhookUrl: opts.webhookUrl,
     webhookKey: opts.webhookKey,
     callbackBase: opts.callbackBase,
+    category: job.category,
+    symbol: job.symbol,
+    companyName: job.companyName,
+    symbols: Array.isArray(job.symbols)
+      ? job.symbols.map(
+          (row: { symbol?: string; name?: string; exchange?: string }) => ({
+            symbol: String(row.symbol ?? ""),
+            name: String(row.name ?? ""),
+            exchange: String(row.exchange ?? "NASDAQ"),
+          })
+        )
+      : [],
   })
   await Event.create({
     jobId: job._id,
     type: ping.pinged ? "grok_bot_pinged" : "grok_bot_ping_failed",
-    payload: { reason: ping.reason, status: ping.status },
+    payload: {
+      reason: ping.reason,
+      status: ping.status,
+      body: ping.body,
+    },
     at: new Date(),
   })
   return { task, ping, callbackUrl: grokCallbackUrl(hex(job._id), opts.callbackBase) }
@@ -256,6 +408,7 @@ export async function applyGrokBotMemo(jobId: string, body: unknown) {
   }
   const markdown = extractMarkdown(body)
   if (!markdown) throw new ApiError("invalid", "markdown is required")
+  const usage = extractTokenUsage(body)
   const dispatchedPayload = (dispatched.payload ?? {}) as { taskId?: string }
   const task =
     (await Task.findOne({ jobId: job._id, type: "report" })) ||
@@ -282,8 +435,17 @@ export async function applyGrokBotMemo(jobId: string, body: unknown) {
   await Event.create({
     jobId: job._id,
     type: "grok_bot_completed",
-    payload: { chars: markdown.length },
+    payload: {
+      chars: markdown.length,
+      ...(usage ? { usage } : {}),
+    },
     at: new Date(),
   })
+  if (isStockPoolJob(job)) {
+    const { assignNextQueuedStockJob } = await import(
+      "@/src/domain/stock-worker-runtime"
+    )
+    await assignNextQueuedStockJob()
+  }
   return { job, markdown }
 }

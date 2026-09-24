@@ -1,7 +1,9 @@
 import Link from "next/link"
 
 import { AgentReviews, AgentRatingSummary } from "@/components/agent-reviews"
-import { statusCopy, TaskCard } from "@/components/dashboard-cards"
+import { TaskCard } from "@/components/dashboard-cards"
+import { statusCopy } from "@/src/domain/job-status-copy"
+import { launchedTaskFromJob } from "@/src/domain/launched-agents"
 import { DashboardBackLink } from "@/components/dashboard-tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,6 +32,7 @@ type AgentListing = {
 
 type AgentJob = {
   _id: unknown
+  name?: string
   domain: string
   brief: string
   status: string
@@ -72,7 +75,7 @@ export function AgentDesk({
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <DashboardBackLink href="/dashboard?tab=agents" label="Your Agents" />
+        <DashboardBackLink href="/dashboard" label="Dashboard" />
         <Button
           size="sm"
           nativeButton={false}
@@ -146,7 +149,7 @@ export function AgentDesk({
                     <p className="text-foreground line-clamp-2">
                       Latest: {lastJob.brief}
                     </p>
-                    <p>{statusCopy(lastJob.status)}</p>
+                    <p>{statusCopy(lastJob.status, lastJob.name)}</p>
                   </div>
                 </Card>
               </Link>
@@ -172,7 +175,7 @@ export function AgentDesk({
             {jobs.map((job) => (
               <TaskCard
                 key={idOf(job._id)}
-                job={job}
+                job={launchedTaskFromJob(job)}
                 staffing={staffingCaption(
                   staffing.get(idOf(job._id)) ?? { workerNames: [] }
                 )}
