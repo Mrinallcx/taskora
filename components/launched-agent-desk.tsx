@@ -26,6 +26,7 @@ function stockLabel(job: AgentJob) {
 }
 
 function categoryLabel(job: AgentJob) {
+  if (job.category === "crypto") return "Crypto"
   if (job.category === "stocks") return "Stocks"
   return ""
 }

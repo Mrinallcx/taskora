@@ -7,13 +7,15 @@ import {
   chartWindowLabel,
   monthRangeLabel,
   monthlyPrices,
-  resolveFinanceAsset,
 } from "@/src/domain/finance-asset"
+import { tickersForJob } from "@/src/domain/job-chart"
 import { jsonError } from "@/src/lib/http"
 import { getSessionUser } from "@/src/lib/auth"
 import { asObjectId } from "@/src/lib/ids"
-import { MAX_LAUNCH_STOCKS } from "@/src/domain/stock-types"
-import { coinGeckoFiveYearChart } from "@/src/tools/crypto/coingecko"
+import {
+  coinGeckoFiveYearChart,
+  resolveCoinGeckoId,
+} from "@/src/tools/crypto/coingecko"
 import { alphaVantageMonthly } from "@/src/tools/prices/alphavantage"
 
 export const runtime = "nodejs"
@@ -27,43 +29,6 @@ function cached(key: string) {
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.body
   return null
-}
-
-function tickersForJob(job: {
-  brief: string
-  instructions?: string
-  symbol?: string
-  companyName?: string
-  symbols?: { symbol?: string; name?: string }[]
-}) {
-  if (Array.isArray(job.symbols) && job.symbols.some((row) => row.symbol?.trim())) {
-    return job.symbols
-      .filter((row) => row.symbol?.trim())
-      .slice(0, MAX_LAUNCH_STOCKS)
-      .map((row) => ({
-        symbol: String(row.symbol).trim().toUpperCase(),
-        name: String(row.name ?? row.symbol).trim(),
-        kind: "stock" as const,
-      }))
-  }
-  if (job.symbol?.trim()) {
-    return [
-      {
-        symbol: job.symbol.trim().toUpperCase(),
-        name: job.companyName?.trim() || job.symbol.trim(),
-        kind: "stock" as const,
-      },
-    ]
-  }
-  const asset = resolveFinanceAsset(`${job.brief}\n${job.instructions ?? ""}`)
-  if (!asset) return []
-  return [
-    {
-      symbol: asset.symbol,
-      name: asset.label,
-      kind: asset.kind,
-    },
-  ]
 }
 
 export async function GET(
@@ -88,7 +53,7 @@ export async function GET(
         error: "No ticker found in this brief.",
       })
     }
-    const cacheKey = `v5:${job._id}:${tickers.map((row) => row.symbol).join(",")}`
+    const cacheKey = `v6:${job._id}:${tickers.map((row) => `${row.kind}:${row.symbol}`).join(",")}`
     const hit = cached(cacheKey)
     if (hit) return NextResponse.json(hit)
 
@@ -103,7 +68,8 @@ export async function GET(
 
     for (const ticker of tickers) {
       if (ticker.kind === "crypto") {
-        const result = await coinGeckoFiveYearChart(ticker.symbol.toLowerCase())
+        const geckoId = await resolveCoinGeckoId(ticker.symbol)
+        const result = await coinGeckoFiveYearChart(geckoId)
         if (!result.ok) continue
         series.push({
           label: ticker.name,
@@ -123,11 +89,14 @@ export async function GET(
     }
 
     if (series.length === 0) {
+      const crypto = tickers.some((row) => row.kind === "crypto")
       return NextResponse.json({
         chart: null,
-        error: key
-          ? "No price history for these tickers."
-          : "ALPHAVANTAGE_API_KEY missing for stock history.",
+        error: crypto
+          ? "No CoinGecko price history for these coins."
+          : key
+            ? "No price history for these tickers."
+            : "ALPHAVANTAGE_API_KEY missing for stock history.",
       })
     }
 
@@ -136,6 +105,7 @@ export async function GET(
       chart: {
         label: series.map((row) => row.symbol).join(" · "),
         symbol: series[0].symbol,
+        kind: tickers[0].kind,
         provider: tickers[0].kind === "crypto" ? "CoinGecko" : "Alpha Vantage",
         window: chartWindowLabel(first),
         range: monthRangeLabel(first),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   availableStockWorkerCount,
+  isStockPoolJob,
   pickStockWorker,
   stockWorkerLoadsFromJobs,
   stockJobAssignmentCopy,
@@ -60,6 +61,17 @@ describe("stock-workers", () => {
     expect(stockWorkersAvailableCopy(10)).toBe("10 workers available")
     expect(stockWorkersAvailableCopy(1)).toBe("1 worker available")
     expect(stockWorkersAvailableCopy(0)).toBe("No workers available")
+  })
+
+  it("does not treat crypto jobs as stock-pool work", () => {
+    expect(
+      isStockPoolJob({
+        category: "crypto",
+        symbol: "BTC",
+        symbols: [{ symbol: "BTC" }],
+      })
+    ).toBe(false)
+    expect(isStockPoolJob({ category: "stocks", symbol: "AAPL" })).toBe(true)
   })
 
   it("writes queued versus assigned copy", () => {

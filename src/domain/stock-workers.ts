@@ -61,6 +61,7 @@ export function isStockPoolJob(job: {
   symbol?: string
   symbols?: unknown[]
 }) {
+  if (job.category === "crypto") return false
   return (
     job.category === "stocks" ||
     Boolean(job.symbol?.trim()) ||

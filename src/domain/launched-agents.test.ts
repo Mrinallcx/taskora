@@ -55,6 +55,22 @@ describe("launched agents", () => {
         symbols: [{ symbol: "AAPL", name: "Apple Inc", exchange: "NASDAQ" }],
       },
     ])
+    expect(
+      summarizeLaunchedAgents([
+        {
+          name: "Bitcoin desk",
+          category: "crypto",
+          symbol: "BTC",
+          companyName: "Bitcoin",
+          exchange: "CRYPTO",
+          symbols: [{ symbol: "BTC", name: "Bitcoin", exchange: "CRYPTO" }],
+        },
+      ])[0]
+    ).toMatchObject({
+      name: "Bitcoin desk",
+      category: "crypto",
+      symbols: [{ symbol: "BTC", name: "Bitcoin", exchange: "CRYPTO" }],
+    })
   })
 
   it("flattens a job for client task cards", () => {

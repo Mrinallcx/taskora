@@ -78,12 +78,14 @@ export function PriceHistoryChart({
   title,
   interval,
   provider,
+  kind,
   series,
   onChartImage,
 }: {
   title: string
   interval?: string
   provider?: string
+  kind?: "stock" | "crypto"
   series: PriceSeries[]
   onChartImage?: (dataUrl: string) => void
 }) {
@@ -256,7 +258,9 @@ export function PriceHistoryChart({
         </div>
         <div className="flex min-w-0 grow flex-col gap-[2px]">
           <span className="text-muted-foreground font-mono text-[10px] leading-3 tracking-[0.1em] uppercase">
-            Stock analysis
+            {kind === "crypto" || provider === "CoinGecko"
+              ? "Crypto analysis"
+              : "Stock analysis"}
           </span>
           <span className="text-foreground truncate text-[15px] leading-5 font-medium">
             {headline}

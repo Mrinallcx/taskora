@@ -7,10 +7,41 @@ const IDS: Record<string, string> = {
   ethereum: "ethereum",
   sol: "solana",
   solana: "solana",
+  lcx: "lcx",
+  xrp: "ripple",
+  ada: "cardano",
+  doge: "dogecoin",
+  avax: "avalanche-2",
+  link: "chainlink",
+  ton: "the-open-network",
 }
 
-function geckoId(symbol: string) {
+export function geckoId(symbol: string) {
   return IDS[symbol.trim().toLowerCase()] ?? symbol.trim().toLowerCase()
+}
+
+export async function resolveCoinGeckoId(symbol: string) {
+  const mapped = IDS[symbol.trim().toLowerCase()]
+  if (mapped) return mapped
+  const key = (process.env.COINGECKO_API_KEY ?? "").trim()
+  const needle = symbol.trim().toLowerCase()
+  if (!needle) return ""
+  const url = new URL("https://api.coingecko.com/api/v3/search")
+  url.searchParams.set("query", needle)
+  const headers: Record<string, string> = {}
+  if (key) headers["x-cg-demo-api-key"] = key
+  const response = await fetch(url, { headers })
+  if (!response.ok) return geckoId(symbol)
+  const json = (await response.json()) as {
+    coins?: { id?: string; symbol?: string; market_cap_rank?: number }[]
+  }
+  const coins = Array.isArray(json.coins) ? json.coins : []
+  const match = coins
+    .filter((row) => String(row.symbol ?? "").trim().toLowerCase() === needle)
+    .sort(
+      (a, b) => (a.market_cap_rank ?? 9999) - (b.market_cap_rank ?? 9999)
+    )[0]
+  return match?.id?.trim() || geckoId(symbol)
 }
 
 async function geckoGet(path: string, key: string, pro = false) {

@@ -5,13 +5,17 @@ import { useEffect, useState } from "react"
 import { ResearchOrb } from "@/components/research-orb"
 import { stockWorkersAvailableCopy } from "@/src/domain/stock-workers"
 
-export function StockWorkersAvailable() {
+export function StockWorkersAvailable({
+  endpoint = "/api/stocks/workers",
+}: {
+  endpoint?: string
+}) {
   const [available, setAvailable] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const response = await fetch("/api/stocks/workers")
+      const response = await fetch(endpoint)
       if (!response.ok || cancelled) return
       const payload = (await response.json()) as { available?: number }
       if (!cancelled) setAvailable(payload.available ?? 0)
@@ -22,7 +26,7 @@ export function StockWorkersAvailable() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [])
+  }, [endpoint])
 
   return (
     <div className="flex items-center gap-2 pt-1">

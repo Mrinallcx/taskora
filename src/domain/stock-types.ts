@@ -4,16 +4,17 @@ export type StockListing = {
   exchange: string
 }
 
-export type LaunchCategory = "stocks"
+export type LaunchCategory = "stocks" | "crypto"
 
 export const MAX_LAUNCH_STOCKS = 4
 
 export const LAUNCH_CATEGORIES: { id: LaunchCategory; label: string }[] = [
   { id: "stocks", label: "Stocks" },
+  { id: "crypto", label: "Crypto" },
 ]
 
 export function isLaunchCategory(value: unknown): value is LaunchCategory {
-  return value === "stocks"
+  return value === "stocks" || value === "crypto"
 }
 
 export function isNasdaqExchange(exchange: string) {

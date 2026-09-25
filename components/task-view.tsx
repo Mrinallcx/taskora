@@ -90,6 +90,7 @@ export function TaskView({
   const [chart, setChart] = useState<{
     label: string
     symbol: string
+    kind?: "stock" | "crypto"
     provider?: string
     window?: string
     range?: string
@@ -131,6 +132,7 @@ export function TaskView({
           chart?: {
             label: string
             symbol: string
+            kind?: "stock" | "crypto"
             provider?: string
             window?: string
             range?: string
@@ -214,7 +216,10 @@ export function TaskView({
             </span>
           </p>
           {isResearchingStatus(job.status) &&
-          (job.workerQueued || job.workerId || job.category === "stocks") ? (
+          (job.workerQueued ||
+            job.workerId ||
+            job.category === "stocks" ||
+            job.category === "crypto") ? (
             <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium">
               <ResearchOrb startedAt={job.createdAt} />
               {stockJobAssignmentCopy(job)}
@@ -322,6 +327,7 @@ export function TaskView({
               title={chart.label}
               interval={chart.window ?? "1 year"}
               provider={chart.provider}
+              kind={chart.kind}
               series={
                 chart.series?.length
                   ? chart.series

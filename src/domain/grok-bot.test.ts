@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { grokDeskForJob, grokWebhookBody } from "@/src/domain/grok-bot"
+import { grokDeskForJob, grokWebhookBody, researchPrompt } from "@/src/domain/grok-bot"
 
 const keys = [
   "GROK_BOT_WEBHOOK_URL",
@@ -9,6 +9,10 @@ const keys = [
   "GROK_BOT_STOCKS_WEBHOOK_KEY",
   "GROK_BOT_STOCKS_2_WEBHOOK_URL",
   "GROK_BOT_STOCKS_2_WEBHOOK_KEY",
+  "GROK_BOT_CRYPTO_WEBHOOK_URL",
+  "GROK_BOT_CRYPTO_WEBHOOK_KEY",
+  "GROK_BOT_CRYPTO_2_WEBHOOK_URL",
+  "GROK_BOT_CRYPTO_2_WEBHOOK_KEY",
 ] as const
 
 const prior = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
@@ -56,6 +60,38 @@ describe("grok desk routing", () => {
     ).toBe("https://example.test/stocks")
   })
 
+  it("sends crypto jobs to the crypto desk, not stocks", () => {
+    process.env.GROK_BOT_STOCKS_WEBHOOK_URL = "https://example.test/stocks"
+    process.env.GROK_BOT_CRYPTO_WEBHOOK_URL = "https://example.test/crypto"
+    process.env.GROK_BOT_CRYPTO_WEBHOOK_KEY = "crypto-key"
+    process.env.GROK_BOT_WEBHOOK_URL = "https://example.test/generic"
+    expect(
+      grokDeskForJob({
+        domain: "finance",
+        category: "crypto",
+        symbols: [{ symbol: "BTC" }],
+      })
+    ).toMatchObject({
+      webhookUrl: "https://example.test/crypto",
+      webhookKey: "crypto-key",
+    })
+  })
+
+  it("sends an assigned crypto job to that desk", () => {
+    process.env.GROK_BOT_CRYPTO_WEBHOOK_URL = "https://example.test/crypto"
+    process.env.GROK_BOT_CRYPTO_2_WEBHOOK_URL = "https://example.test/crypto-2"
+    process.env.GROK_BOT_CRYPTO_2_WEBHOOK_KEY = "two"
+    expect(
+      grokDeskForJob({
+        category: "crypto",
+        workerId: "crypto-2",
+      })
+    ).toMatchObject({
+      webhookUrl: "https://example.test/crypto-2",
+      webhookKey: "two",
+    })
+  })
+
   it("sends an assigned stock job to that desk", () => {
     process.env.GROK_BOT_STOCKS_WEBHOOK_URL = "https://example.test/stocks"
     process.env.GROK_BOT_STOCKS_2_WEBHOOK_URL = "https://example.test/stocks-2"
@@ -89,5 +125,17 @@ describe("grok webhook body", () => {
     expect(body.content).toBe(body.prompt)
     expect(body.callbackUrl).toBe("https://example.test/callback")
     expect(body.symbol).toBe("AAPL")
+  })
+
+  it("scopes a crypto brief to the selected coins only", () => {
+    expect(
+      researchPrompt({
+        brief: "Research Bitcoin (BTC) over the last 24 months.",
+        symbol: "BTC",
+        companyName: "Bitcoin",
+        exchange: "CRYPTO",
+        symbols: [{ symbol: "BTC", name: "Bitcoin", exchange: "CRYPTO" }],
+      })
+    ).toContain("crypto. Research this crypto only.")
   })
 })

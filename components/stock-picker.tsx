@@ -13,10 +13,20 @@ export function StockPicker({
   value,
   onChange,
   disabled,
+  searchPath = "/api/stocks/search",
+  placeholder = "Search NASDAQ…",
+  fullPlaceholder = "Max 4 stocks",
+  errorCopy = "Could not search stocks.",
+  inputId = "job-stock",
 }: {
   value: StockListing[]
   onChange: (stocks: StockListing[]) => void
   disabled?: boolean
+  searchPath?: string
+  placeholder?: string
+  fullPlaceholder?: string
+  errorCopy?: string
+  inputId?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState("")
@@ -38,7 +48,7 @@ export function StockPicker({
       setLoading(true)
       try {
         const response = await fetch(
-          `/api/stocks/search?q=${encodeURIComponent(needle)}`
+          `${searchPath}?q=${encodeURIComponent(needle)}`
         )
         const json = (await response.json()) as {
           results?: StockListing[]
@@ -47,7 +57,7 @@ export function StockPicker({
         if (ignore) return
         if (!response.ok) {
           setResults([])
-          setError(errorMessage(json) ?? "Could not search stocks.")
+          setError(errorMessage(json) ?? errorCopy)
           return
         }
         setError("")
@@ -55,7 +65,7 @@ export function StockPicker({
       } catch {
         if (!ignore) {
           setResults([])
-          setError("Could not search stocks.")
+          setError(errorCopy)
         }
       } finally {
         if (!ignore) setLoading(false)
@@ -65,7 +75,7 @@ export function StockPicker({
       ignore = true
       window.clearTimeout(timer)
     }
-  }, [query])
+  }, [query, searchPath, errorCopy])
 
   function add(row: StockListing) {
     if (selected.has(row.symbol) || full) return
@@ -108,11 +118,11 @@ export function StockPicker({
         ))}
         <input
           ref={inputRef}
-          id="job-stock"
+          id={inputId}
           value={query}
           disabled={disabled || full}
           autoComplete="off"
-          placeholder={full ? "Max 4 stocks" : "Search NASDAQ…"}
+          placeholder={full ? fullPlaceholder : placeholder}
           className="placeholder:text-muted-foreground min-w-20 flex-1 bg-transparent text-sm outline-none disabled:cursor-not-allowed"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {

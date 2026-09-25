@@ -8,6 +8,7 @@ import { ApiError } from "@/src/domain/errors"
 import { extractTokenUsage } from "@/src/domain/job-run-stats"
 import { timeoutMs } from "@/src/domain/timeouts"
 import { asObjectId, hex } from "@/src/lib/ids"
+import { cryptoWorkerById, isCryptoPoolJob } from "@/src/domain/crypto-workers"
 import { isStockPoolJob, stockWorkerById } from "@/src/domain/stock-workers"
 
 const DISPATCHED = "grok_bot_dispatched"
@@ -21,12 +22,27 @@ export function grokDeskForJob(job: {
   workerId?: string
 }) {
   if (job.workerId) {
-    const assigned = stockWorkerById(job.workerId)
+    const assigned =
+      cryptoWorkerById(job.workerId) || stockWorkerById(job.workerId)
     if (assigned?.webhookUrl) {
       return {
         webhookUrl: assigned.webhookUrl,
         webhookKey: assigned.webhookKey,
       }
+    }
+  }
+  if (isCryptoPoolJob(job)) {
+    return {
+      webhookUrl: (
+        process.env.GROK_BOT_CRYPTO_WEBHOOK_URL ||
+        process.env.GROK_BOT_WEBHOOK_URL ||
+        ""
+      ).trim(),
+      webhookKey: (
+        process.env.GROK_BOT_CRYPTO_WEBHOOK_KEY ||
+        process.env.GROK_BOT_WEBHOOK_KEY ||
+        ""
+      ).trim(),
     }
   }
   const stocksUrl = (process.env.GROK_BOT_STOCKS_WEBHOOK_URL || "").trim()
@@ -60,7 +76,7 @@ export function grokBotEnabledForJob(job: {
   symbols?: unknown[]
 }) {
   if (process.env.VITEST) return false
-  if (isStockPoolJob(job)) return true
+  if (isStockPoolJob(job) || isCryptoPoolJob(job)) return true
   return Boolean(grokDeskForJob(job).webhookUrl)
 }
 
@@ -186,6 +202,13 @@ function subjectLine(job: {
       row.name ? `${row.name} (${row.symbol})` : row.symbol
     )
     .join(", ")
+  const crypto = rows.every((row) => row.exchange === "CRYPTO")
+  if (crypto) {
+    if (rows.length === 1) {
+      return `Subject: ${names} crypto. Research this crypto only.\n\n`
+    }
+    return `Subject: ${names} crypto. This job is an in-scope side-by-side comparison of these ${rows.length} coins. Do not refuse for ticker count. Stay on these coins only.\n\n`
+  }
   if (rows.length === 1) {
     return `Subject: ${names} listed on NASDAQ. Research this NASDAQ-listed US stock only.\n\n`
   }
@@ -207,7 +230,7 @@ export function researchPrompt(job: {
 }
 
 const CALLBACK_INSTRUCTION =
-  'Do the entire brief using live sources where asked. If the brief names more than one selected NASDAQ ticker, write one comparison memo — that is in scope. Follow any research instructions in the brief. Write the memo in markdown. Then HTTP POST JSON { "markdown": "<full memo>" } to callbackUrl. Do not wait for the user. Do not include secrets.'
+  'Do the entire brief using live sources where asked. If the brief names more than one selected ticker, write one comparison memo — that is in scope. Follow any research instructions in the brief. Write the memo in markdown. Then HTTP POST JSON { "markdown": "<full memo>" } to callbackUrl. Do not wait for the user. Do not include secrets.'
 
 export function grokWebhookBody(input: {
   jobId: string
@@ -339,7 +362,9 @@ export async function handoffJobToGrokBot(
           (row: { symbol?: string; name?: string; exchange?: string }) => ({
             symbol: String(row.symbol ?? ""),
             name: String(row.name ?? ""),
-            exchange: String(row.exchange ?? "NASDAQ"),
+            exchange:
+              String(row.exchange ?? "").trim() ||
+              (job.category === "crypto" ? "CRYPTO" : "NASDAQ"),
           })
         )
       : [],
@@ -441,7 +466,12 @@ export async function applyGrokBotMemo(jobId: string, body: unknown) {
     },
     at: new Date(),
   })
-  if (isStockPoolJob(job)) {
+  if (isCryptoPoolJob(job)) {
+    const { assignNextQueuedCryptoJob } = await import(
+      "@/src/domain/crypto-worker-runtime"
+    )
+    await assignNextQueuedCryptoJob()
+  } else if (isStockPoolJob(job)) {
     const { assignNextQueuedStockJob } = await import(
       "@/src/domain/stock-worker-runtime"
     )

@@ -22,6 +22,10 @@ import {
   ensureResearchHandoffListing,
   grokBotEnabledForJob,
 } from "@/src/domain/grok-bot"
+import { resolveCryptoAssets } from "@/src/domain/crypto-listings"
+import { briefCryptoMismatch } from "@/src/domain/crypto-scope"
+import { isCryptoPoolJob } from "@/src/domain/crypto-workers"
+import { assignNextQueuedCryptoJob } from "@/src/domain/crypto-worker-runtime"
 import { isStockPoolJob } from "@/src/domain/stock-workers"
 import { assignNextQueuedStockJob, assignStockWorkerOrQueue } from "@/src/domain/stock-worker-runtime"
 import { resolveFinanceAsset } from "@/src/domain/finance-asset"
@@ -150,8 +154,21 @@ export async function createJob(
     const mismatch = briefStockMismatch(brief, instructions, listings)
     if (mismatch) throw new ApiError("invalid", mismatch)
   }
+  if (category === "crypto") {
+    const listings = await resolveCryptoAssets(requested)
+    symbols = listings.map((row) => ({
+      symbol: row.symbol,
+      name: row.name,
+      exchange: row.exchange,
+    }))
+    symbol = listings[0].symbol
+    companyName = listings[0].name
+    exchange = listings[0].exchange
+    const mismatch = briefCryptoMismatch(brief, instructions, listings)
+    if (mismatch) throw new ApiError("invalid", mismatch)
+  }
   const domain =
-    category === "stocks"
+    category === "stocks" || category === "crypto"
       ? "finance"
       : body.domain && ["general", "finance", "academic"].includes(body.domain)
         ? body.domain
@@ -528,7 +545,8 @@ export async function stopJob(userId: unknown, jobId: string, reason = "user_sto
     await emit(job._id, "stopped", { reason }, session)
     return stopped
   })
-  if (isStockPoolJob(cancelled)) await assignNextQueuedStockJob()
+  if (isCryptoPoolJob(cancelled)) await assignNextQueuedCryptoJob()
+  else if (isStockPoolJob(cancelled)) await assignNextQueuedStockJob()
   return cancelled
 }
 

@@ -100,7 +100,7 @@ export type LaunchedAgentOption = {
   name: string
   slug: string
   taskCount: number
-  category: "stocks" | ""
+  category: "stocks" | "crypto" | ""
   symbols: { symbol: string; name: string; exchange: string }[]
 }
 
@@ -134,7 +134,12 @@ export function summarizeLaunchedAgents<
       name: agent.name,
       slug: agent.slug,
       taskCount: agent.tasks.length,
-      category: latest.category === "stocks" ? "stocks" : "",
+      category:
+        latest.category === "crypto"
+          ? "crypto"
+          : latest.category === "stocks"
+            ? "stocks"
+            : "",
       symbols,
     }
   })

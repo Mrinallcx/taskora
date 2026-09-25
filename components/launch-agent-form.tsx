@@ -23,9 +23,11 @@ import {
   launchedAgentHref,
   type LaunchedAgentOption,
 } from "@/src/domain/launched-agents"
+import { briefCryptoMismatch } from "@/src/domain/crypto-scope"
 import { briefStockMismatch } from "@/src/domain/stock-scope"
 import {
   LAUNCH_CATEGORIES,
+  isLaunchCategory,
   type LaunchCategory,
   type StockListing,
 } from "@/src/domain/stock-types"
@@ -94,6 +96,11 @@ export function LaunchAgentForm({
       return
     }
     setName(agent.name)
+    if (agent.category === "crypto") {
+      setCategory("crypto")
+      setStocks(agent.symbols)
+      return
+    }
     if (agent.category === "stocks" || agent.symbols.length > 0) {
       setCategory("stocks")
       setStocks(agent.symbols)
@@ -121,14 +128,21 @@ export function LaunchAgentForm({
       return
     }
     if (stocks.length === 0) {
-      toast.error("Pick at least one NASDAQ-listed stock.")
+      toast.error(
+        category === "crypto"
+          ? "Pick at least one crypto."
+          : "Pick at least one NASDAQ-listed stock."
+      )
       return
     }
     if (!brief) {
       toast.error("Add a job description.")
       return
     }
-    const mismatch = briefStockMismatch(brief, instructions, stocks)
+    const mismatch =
+      category === "crypto"
+        ? briefCryptoMismatch(brief, instructions, stocks)
+        : briefStockMismatch(brief, instructions, stocks)
     if (mismatch) {
       toast.error(mismatch)
       return
@@ -187,7 +201,7 @@ export function LaunchAgentForm({
       <div>
         <h2 className="font-heading text-2xl">Launch agent</h2>
         <p className="text-muted-foreground mt-1 text-sm">
-          Name it, pick stocks, say what to research.
+          Name it, pick stocks or crypto, say what to research.
         </p>
       </div>
 
@@ -235,18 +249,20 @@ export function LaunchAgentForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Stocks</span>
+          <span className="text-sm font-medium">
+            {category === "crypto" ? "Crypto" : "Stocks"}
+          </span>
           <div className="flex items-start rounded-lg border border-input dark:bg-input/30">
             <Select
               value={category}
               onValueChange={(value) => {
-                if (value === "stocks") setCategory(value)
+                if (isLaunchCategory(value)) setCategory(value)
                 setStocks([])
               }}
             >
               <SelectTrigger
                 id="job-category"
-                className="h-8 w-24 shrink-0 rounded-none border-0 border-r border-input dark:bg-transparent dark:hover:bg-transparent"
+                className="h-8 w-28 shrink-0 rounded-none border-0 border-r border-input dark:bg-transparent dark:hover:bg-transparent"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -258,15 +274,30 @@ export function LaunchAgentForm({
                 ))}
               </SelectContent>
             </Select>
-            {category === "stocks" ? (
+            {category === "crypto" ? (
+              <StockPicker
+                value={stocks}
+                onChange={setStocks}
+                disabled={pending}
+                searchPath="/api/crypto/search"
+                placeholder="Search crypto…"
+                fullPlaceholder="Max 4 coins"
+                errorCopy="Could not search crypto."
+                inputId="job-crypto"
+              />
+            ) : (
               <StockPicker
                 value={stocks}
                 onChange={setStocks}
                 disabled={pending}
               />
-            ) : null}
+            )}
           </div>
-          {category === "stocks" ? <StockWorkersAvailable /> : null}
+          {category === "crypto" ? (
+            <StockWorkersAvailable endpoint="/api/crypto/workers" />
+          ) : (
+            <StockWorkersAvailable />
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -281,7 +312,11 @@ export function LaunchAgentForm({
               rows={4}
               maxLength={8000}
               className="min-h-28 field-sizing-fixed rounded-xl border-0 bg-transparent shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-              placeholder="Compare AAPL and MSFT since 2020."
+              placeholder={
+                category === "crypto"
+                  ? "Research Bitcoin (BTC) over the last 24 months."
+                  : "Compare AAPL and MSFT since 2020."
+              }
             />
           </BeamField>
         </div>
@@ -297,7 +332,11 @@ export function LaunchAgentForm({
               rows={4}
               maxLength={8000}
               className="min-h-28 field-sizing-fixed rounded-xl border-0 bg-transparent shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-              placeholder="Cite 10-Ks. No invented figures."
+              placeholder={
+                category === "crypto"
+                  ? "Cite primary sources. Stay on the selected coins only."
+                  : "Cite 10-Ks. No invented figures."
+              }
             />
           </BeamField>
         </div>
